@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tamamen Bağımsız Mesajlaşma Uygulaması</title>
+    <style>
+        /* --- SAF CSS STİLLERİ --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: #f0f2f5;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #login-screen {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .login-box {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            max-width: 350px;
+            width: 100%;
+        }
+
+        .login-box input, .search-box input, .message-input-area input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .login-box button, .message-input-area button {
+            width: 100%;
+            padding: 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .login-box button:hover, .message-input-area button:hover { background: #0056b3; }
+
+        .app-container {
+            display: flex;
+            width: 95vw;
+            height: 90vh;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 30%;
+            min-width: 280px;
+            border-right: 1px solid #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            background: #ffffff;
+        }
+
+        .profile-bar {
+            padding: 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .search-box { padding: 15px; border-bottom: 1px solid #e0e0e0; }
+        .search-box input { margin-bottom: 5px; }
+
+        #search-results {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            max-height: 120px;
+            overflow-y: auto;
+            margin-top: 5px;
+        }
+
+        .search-item, .friend-item {
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+
+        .search-item button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .search-item button:hover { background: #218838; }
+
+        .friend-item:hover { background: #f0f2f5; }
+        .friend-item.active { background: #e8f0fe; }
+
+        .chat-area {
+            width: 70%;
+            display: flex;
+            flex-direction: column;
+            background: #efeae2; /* Klasik sohbet arka plan rengi */
+        }
+
+        .chat-header {
+            padding: 15px;
+            background: #f0f2f5;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            padding: 10px 14px;
+            border-radius: 8px;
+            max-width: 60%;
+            word-wrap: break-word;
+            font-size: 15px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .message.sent {
+            background: #d9fdd3;
+            align-self: flex-end;
+            border-top-right-radius: 0;
+        }
+
+        .message.received {
+            background: white;
+            align-self: flex-start;
+            border-top-left-radius: 0;
+        }
+
+        .message-input-area {
+            padding: 15px;
+            background: #f0f2f5;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .message-input-area input { margin: 0; flex: 1; }
+        .message-input-area button { width: auto; padding: 12px 25px; }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- GİRİŞ / KAYIT EKRANI -->
+    <div id="login-screen">
+        <div class="login-box">
+            <h2 style="margin-bottom: 10px;">Giriş Yap veya Kaydol</h2>
+            <p style="font-size:12px; color:#666; margin-bottom:15px;">Yazdığınız isim sistemde yoksa otomatik yeni hesap açılır.</p>
+            <input type="text" id="username-input" placeholder="Kullanıcı adınızı yazın...">
+            <button id="login-btn">Uygulamaya Katıl</button>
+        </div>
+    </div>
+
+    <!-- ANA UYGULAMA PANELİ -->
+    <div class="app-container">
+        
+        <!-- SOL PANEL (Profil, Arama ve Arkadaşlar) -->
+        <div class="sidebar">
+            <div class="profile-bar">
+                👤 Profil: <span id="current-user-display">-</span>
+            </div>
+            
+            <div class="search-box">
+                <input type="text" id="search-input" placeholder="Kullanıcı adına göre ara...">
+                <div id="search-results" class="hidden"></div>
+            </div>
+
+            <div style="padding:12px 15px; font-size:12px; color:#777; font-weight:bold; background:#fafafa; border-bottom:1px solid #eee;">ARKADAŞLARIM</div>
+            <div id="friends-list" style="flex:1; overflow-y:auto;"></div>
+        </div>
+
+        <!-- SAĞ PANEL (Mesajlaşma Alanı) -->
+        <div class="chat-area">
+            <div class="chat-header" id="chat-header">Sohbet Başlatılmadı</div>
+            
+            <div class="messages-container" id="messages-container">
+                <div style="text-align:center; color:#888; margin:auto; font-size:14px;">Mesajlaşmak için sol taraftan bir arkadaşınızı seçin veya yeni birini aratıp ekleyin.</div>
+            </div>
+
+            <div class="message-input-area">
+                <input type="text" id="message-input" placeholder="Bir mesaj yazın..." disabled>
+                <button id="send-btn" disabled>Gönder</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- --- JAVASCRIPT MOTORU (LOCALSTORAGE VERİTABANI) --- -->
+    <script>
+        // Bilgisayar hafızasındaki (LocalStorage) veritabanını çek veya yeni şablon oluştur
+        let db = JSON.parse(localStorage.getItem('offline_chat_system')) || { users: {}, chats: {} };
+
+        function saveToLocalStorage() {
+            localStorage.setItem('offline_chat_system', JSON.stringify(db));
+        }
+
+        let currentUser = null;
+        let activeChatFriend = null;
+
+        // DOM Bağlantıları
+        const loginScreen = document.getElementById('login-screen');
+        const usernameInput = document.getElementById('username-input');
+        const loginBtn = document.getElementById('login-btn');
+        const currentUserDisplay = document.getElementById('current-user-display');
+        const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+        const friendsList = document.getElementById('friends-list');
+        const chatHeader = document.getElementById('chat-header');
+        const messagesContainer = document.getElementById('messages-container');
+        const messageInput = document.getElementById('message-input');
+        const sendBtn = document.getElementById('send-btn');
+
+        // 1. OTURUM AÇMA / KAYIT FONKSİYONU
+        loginBtn.addEventListener('click', () => {
+            const username = usernameInput.value.trim().toLowerCase();
+            if(!username) return alert('Lütfen geçerli bir kullanıcı adı girin!');
+
+            currentUser = username;
+
+            // Eğer veritabanında bu isimde biri yoksa kaydet
+            if(!db.users[currentUser]) {
+                db.users[currentUser] = { username: currentUser, friends: [] };
+                saveToLocalStorage();
+            }
+
+            currentUserDisplay.innerText = currentUser;
+            loginScreen.classList.add('hidden');
+            renderFriendsList();
+        });
+
+        // 2. KULLANICI ARAMA FONKSİYONU
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim().toLowerCase();
+            searchResults.innerHTML = '';
+            
+            if(!query) {
+                searchResults.classList.add('hidden');
+                return;
+            }
+
+            searchResults.classList.remove('hidden');
+            let matchCount = 0;
+
+            // Kayıtlı tüm kullanıcıları tarayıp filtrele
+            Object.keys(db.users).forEach(username => {
+                if(username.includes(query) && username !== currentUser) {
+                    matchCount++;
+                    const div = document.createElement('div');
+                    div.className = 'search-item';
+                    
+                    // Zaten arkadaş olup olmadığını kontrol et
+                    const isAlreadyFriend = db.users[currentUser].friends.includes(username);
+                    
+                    div.innerHTML = `
+                        <strong>${username}</strong>
+                        ${isAlreadyFriend ? '<span style="color:green; font-size:12px; font-weight:bold;">Arkadaş</span>' : `<button onclick="addFriendAction('${username}')">Ekle</button>`}
+                    `;
+                    searchResults.appendChild(div);
+                }
+            });
+
+            if(matchCount === 0) {
+                searchResults.innerHTML = '<div style="padding:10px; font-size:12px; color:#888; text-align:center;">Kullanıcı bulunamadı.<br>(Yan sekmede bu isimle bir hesap açıp deneyebilirsiniz)</div>';
+            }
+        });
+
+        // 3. ARKADAŞ EKLEME FONKSİYONU
+        window.addFriendAction = function(friendName) {
+            if(!db.users[currentUser].friends.includes(friendName)) {
+                // Kendi listene ekle
+                db.users[currentUser].friends.push(friendName);
+                
+                // Karşı tarafın listesine seni ekle (Simülasyon gereği)
+                if(!db.users[friendName].friends.includes(currentUser)) {
+                    db.users[friendName].friends.push(currentUser);
+                }
+                
+                saveToLocalStorage();
+                alert(`${friendName} başarıyla arkadaş listenize eklendi!`);
+                searchInput.value = '';
+                searchResults.classList.add('hidden');
+                renderFriendsList();
+            }
+        };
+
+        // 4. ARKADAŞ LİSTESİNİ YENİLEME
+        function renderFriendsList() {
+            friendsList.innerHTML = '';
+            const myFriends = db.users[currentUser].friends || [];
+
+            if(myFriends.length === 0) {
+                friendsList.innerHTML = '<div style="padding:20px; color:#999; text-align:center; font-size:13px;">Henüz hiç arkadaşınız yok.<br>Üstteki kutudan arama yapın.</div>';
+                return;
+            }
+
+            myFriends.forEach(friend => {
+                const div = document.createElement('div');
+                div.className = `friend-item ${activeChatFriend === friend ? 'active' : ''}`;
+                div.innerHTML = `
+                    <div>
+                        <div style="font-weight:bold; color:#333;">${friend}</div>
+                        <div style="font-size:11px; color:#aaa;">Çevrimiçi simülasyonu</div>
+                    </div>
+                    <span style="font-size:12px; color:#007bff; font-weight:bold;">Sohbet 💬</span>
+                `;
+                div.addEventListener('click', () => openChatWindow(friend));
+                friendsList.appendChild(div);
+            });
+        }
+
+        // 5. SOHBET PENCERESİNİ AÇMA
+        function openChatWindow(friendName) {
+            activeChatFriend = friendName;
+            chatHeader.innerText = `💬 ${friendName} ile Sohbet`;
+            
+            messageInput.disabled = false;
+            sendBtn.disabled = false;
+            messageInput.focus();
+
+            // Aktif arkadaşı görsel olarak işaretle
+            renderFriendsList();
+            renderMessages();
+        }
+
+        // 6. MESAJLARI EKRANA YAZDIRMA
+        function renderMessages() {
+            messagesContainer.innerHTML = '';
+            // İki isimden benzersiz ve ortak bir oda ID'si üret (Örn: ahmet_mehmet)
+            const roomID = [currentUser, activeChatFriend].sort().join('_');
+            const messageHistory = db.chats[roomID] || [];
+
+            if(messageHistory.length === 0) {
+                messagesContainer.innerHTML = '<div style="text-align:center; color:#999; margin:auto; font-size:13px;">Sohbet geçmişi boş. İlk mesajı siz yazın!</div>';
+                return;
+            }
+
+            messageHistory.forEach(msg => {
+                const div = document.createElement('div');
+                div.className = `message ${msg.sender === currentUser ? 'sent' : 'received'}`;
+                div.innerText = msg.text;
+                messagesContainer.appendChild(div);
+            });
+
+            // Ekranı en aşağı kaydır
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // 7. MESAJ GÖNDERME FONKSİYONU
+        function pushMessage() {
+            const text = messageInput.value.trim();
+            if(!text || !activeChatFriend) return;
+
+            const roomID = [currentUser, activeChatFriend].sort().join('_');
+            
+            if(!db.chats[roomID]) db.chats[roomID] = [];
+            
+            db.chats[roomID].push({
+                sender: currentUser,
+                text: text,
+                timestamp: Date.now()
+            });
+
+            saveToLocalStorage();
+            messageInput.value = '';
+            renderMessages();
+        }
+
+        // Gönder tetikleyicileri
+        sendBtn.addEventListener('click', pushMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') pushMessage();
+        });
+
+        // 8. EŞZAMANLILIK (Aynı bilgisayardaki diğer sekmeler arası anlık güncelleme)
+        window.addEventListener('storage', () => {
+            db = JSON.parse(localStorage.getItem('offline_chat_system')) || { users: {}, chats: {} };
+            if(currentUser) {
+                renderFriendsList();
+                if(activeChatFriend) renderMessages();
+            }
+        });
+    </script>
+</body>
+</html>
