@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gelişmiş Yerel Mesajlaşma & Grup Platformu</title>
+    <title>Gelişmiş Küresel Mesajlaşma & Grup Platformu</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: #f0f2f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
@@ -65,7 +66,6 @@
 </head>
 <body>
 
-    <!-- GİRİŞ VE KAYIT EKRANI -->
     <div id="login-screen" class="hidden">
         <div class="login-box">
             <h2 id="login-title" style="margin-bottom: 15px;">Giriş Yap veya Kaydol</h2>
@@ -77,9 +77,7 @@
         </div>
     </div>
 
-    <!-- ANA UYGULAMA PANELİ -->
     <div class="app-container">
-        <!-- SOL PANEL -->
         <div class="sidebar">
             <div class="profile-bar">
                 <div class="profile-info">
@@ -89,13 +87,11 @@
                 <button class="logout-btn" id="logout-btn">Çıkış Yap</button>
             </div>
             
-            <!-- Arama -->
             <div class="search-box">
                 <input type="text" id="search-input" placeholder="Yeni arkadaş ara...">
                 <div id="search-results" class="hidden"></div>
             </div>
 
-            <!-- Grup Oluşturma Modülü -->
             <div class="group-creation-box">
                 <input type="text" id="group-name-input" placeholder="Grup adı yazın...">
                 <div style="font-size: 11px; color:#555; margin-bottom:3px; font-weight:bold;">Gruptakileri Seçin:</div>
@@ -107,7 +103,6 @@
             <div class="items-list" id="items-list"></div>
         </div>
 
-        <!-- SAĞ PANEL -->
         <div class="chat-area">
             <div class="chat-header">
                 <img id="chat-avatar" class="user-avatar hidden" src="">
@@ -128,16 +123,18 @@
     </div>
 
     <script>
-        // --- GELİŞMİŞ LOCALSTORAGE VERİTABANI ALTYAPISI ---
-        let db = JSON.parse(localStorage.getItem('mega_chat_db')) || { users: {}, chats: {}, session: null };
-        function saveDB() { localStorage.setItem('mega_chat_db', JSON.stringify(db)); }
+        // --- SUPABASE BAĞLANTI AYARLARI ---
+        const SUPABASE_URL = "https://gkdixlwuqnzmgrnmqaay.supabase.co"; // Burası tam doğru kalsın
+        const SUPABASE_ANON_KEY = "BURAYA_AYARLARDAKI_UPUZUN_ANON_KEYI_YAPIŞTIR"; // Buraya Ayarlar'dan aldığın şifreyi yapıştır
 
-        let currentUser = null;
-        let activeTarget = null; // Arkadaş ID'si veya Grup ID'si olabilir
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let currentUser = localStorage.getItem('chat_session_user') || null;
+        let activeTarget = null;
         let isGroupChat = false;
         let tempAvatarBase64 = "";
 
-        // DOM Elementleri
+        // DOM Belleği
         const loginScreen = document.getElementById('login-screen');
         const usernameInput = document.getElementById('username-input');
         const avatarFileInput = document.getElementById('avatar-file-input');
@@ -159,19 +156,17 @@
         const msgImageInput = document.getElementById('msg-image-input');
         const sendBtn = document.getElementById('send-btn');
 
-        // Varsayılan Avatar Resmi SVG'si
-        const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ccc'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 1.79 4 2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5-4-8-4z'/></svg>";
+        const defaultAvatar = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ccc'><path d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5-4-8-4z'/></svg>";
 
-        // --- 1. OTURUM KONTROLÜ (CIHAZDA KALICI HESAP) ---
-        window.addEventListener('load', () => {
-            if (db.session) {
-                initUser(db.session);
+        // --- BAŞLANGIÇ KONTROLÜ ---
+        window.addEventListener('load', async () => {
+            if (currentUser) {
+                initUser(currentUser);
             } else {
                 loginScreen.classList.remove('hidden');
             }
         });
 
-        // Girişte Profil Resmi Okuma
         avatarFileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if(file) {
@@ -184,110 +179,92 @@
             }
         });
 
-        // Kayıt ve Giriş İşlemi
-        loginBtn.addEventListener('click', () => {
+        // --- GİRİŞ / KAYIT MOTORU ---
+        loginBtn.addEventListener('click', async () => {
             const username = usernameInput.value.trim().toLowerCase();
             if(!username) return alert('Lütfen geçerli bir isim girin!');
 
-            // İSİM BİR DAHA ALINAMASIN KONTROLÜ
-            if(db.users[username]) {
-                // Eğer bu cihazda daha önce girilmiş bir hesapsa şifresiz geçişe izin verilebilir, 
-                // ancak "isim bir daha alınamaz" kuralını kesin korumak için yeni kayıt engellenir.
-                alert('Bu kullanıcı adı sistemde kayıtlıdır! Başka bir isim deneyin.');
-                return;
-            }
+            // Supabase'de kontrol et
+            const { data: user, error } = await _supabase.from('profiles').select('*').eq('username', username).maybeSingle();
 
-            // Yeni Kullanıcı Oluşturma
-            db.users[username] = {
-                username: username,
-                avatar: tempAvatarBase64 || defaultAvatar,
-                friends: [],
-                groups: []
-            };
-            db.session = username; // Cihaz oturumuna kaydet
-            saveDB();
-            initUser(username);
+            if (user) {
+                // Hesap varsa direkt giriş yap
+                localStorage.setItem('chat_session_user', username);
+                initUser(username);
+            } else {
+                // Hesap yoksa yeni profil oluştur
+                const finalAvatar = tempAvatarBase64 || defaultAvatar;
+                const { error: regError } = await _supabase.from('profiles').insert([{ id: username, username: username, avatar_url: finalAvatar }]);
+                
+                if(regError) return alert('Kayıt oluşturulurken bir hata meydana geldi!');
+                
+                localStorage.setItem('chat_session_user', username);
+                initUser(username);
+            }
         });
 
-        function initUser(username) {
+        async function initUser(username) {
             currentUser = username;
             myUsername.innerText = currentUser;
-            myAvatar.src = db.users[currentUser].avatar || defaultAvatar;
+            
+            const { data: profile } = await _supabase.from('profiles').select('avatar_url').eq('username', currentUser).single();
+            myAvatar.src = profile ? profile.avatar_url : defaultAvatar;
+            
             loginScreen.classList.add('hidden');
-            renderSidebarLists();
-            renderCheckboxFriends();
-            listenStorage();
+            
+            // Verileri yükle ve Gerçek Zamanlı Dinleyiciyi Başlat
+            loadSidebarData();
+            listenRealtimeMessages();
         }
 
-        // Çıkış Yapma (Oturumu Kapatır ama Hesap Veritabanında Kalır)
         logoutBtn.addEventListener('click', () => {
-            db.session = null;
-            saveDB();
+            localStorage.removeItem('chat_session_user');
             location.reload();
         });
 
-        // --- 2. ARKADAŞ ARAMA VE EKLEME ---
-        searchInput.addEventListener('input', (e) => {
+        // --- ARKADAŞ ARAMA VE EKLEME ---
+        searchInput.addEventListener('input', async (e) => {
             const q = e.target.value.trim().toLowerCase();
             searchResults.innerHTML = '';
             if(!q) return searchResults.classList.add('hidden');
             searchResults.classList.remove('hidden');
-            
-            let found = false;
-            Object.keys(db.users).forEach(uname => {
-                if(uname.includes(q) && uname !== currentUser) {
-                    found = true;
-                    const isFriend = db.users[currentUser].friends.includes(uname);
-                    const div = document.createElement('div');
-                    div.style.padding = '10px';
-                    div.style.display = 'flex';
-                    div.style.justifyContent = 'space-between';
-                    div.style.alignItems = 'center';
-                    div.style.borderBottom = '1px solid #eee';
-                    div.innerHTML = `
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <img src="${db.users[uname].avatar}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">
-                            <strong>${uname}</strong>
-                        </div>
-                        ${isFriend ? '<span style="color:green; font-size:12px;">Arkadaş</span>' : `<button onclick="addFriend('${uname}')" style="padding:4px 8px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">Ekle</button>`}
-                    `;
-                    searchResults.appendChild(div);
-                }
-            });
-            if(!found) searchResults.innerHTML = '<div style="padding:10px; color:#888; text-align:center; font-size:12px;">Kullanıcı bulunamadı.</div>';
-        });
 
-        window.addFriend = function(fName) {
-            if(!db.users[currentUser].friends.includes(fName)) {
-                db.users[currentUser].friends.push(fName);
-                if(!db.users[fName].friends.includes(currentUser)) db.users[fName].friends.push(currentUser); // Karşılıklı ekleme
-                saveDB();
-                searchInput.value = ''; searchResults.classList.add('hidden');
-                renderSidebarLists();
-                renderCheckboxFriends();
-            }
-        };
+            const { data: users } = await _supabase.from('profiles').select('*').ilike('username', `%${q}%`).neq('username', currentUser);
+            const { data: myFriends } = await _supabase.from('friends').select('friend_id').eq('user_id', currentUser);
+            const friendList = myFriends ? myFriends.map(f => f.friend_id) : [];
 
-        // --- 3. ÇOKLU ARKADAŞ SEÇEREK GRUP OLUŞTURMA ---
-        function renderCheckboxFriends() {
-            groupFriendCheckboxes.innerHTML = '';
-            const friends = db.users[currentUser].friends || [];
-            if(friends.length === 0) {
-                groupFriendCheckboxes.innerHTML = '<div style="color:#aaa; text-align:center; padding-top:5px;">Önce arkadaş ekleyin.</div>';
+            if(!users || users.length === 0) {
+                searchResults.innerHTML = '<div style="padding:10px; color:#888; text-align:center; font-size:12px;">Kullanıcı bulunamadı.</div>';
                 return;
             }
-            friends.forEach(f => {
-                const label = document.createElement('label');
-                label.style.display = 'flex';
-                label.style.alignItems = 'center';
-                label.style.gap = '5px';
-                label.style.marginBottom = '3px';
-                label.innerHTML = `<input type="checkbox" value="${f}" class="group-member-check"> ${f}`;
-                groupFriendCheckboxes.appendChild(label);
-            });
-        }
 
-        createGroupBtn.addEventListener('click', () => {
+            users.forEach(u => {
+                const isFriend = friendList.includes(u.username);
+                const div = document.createElement('div');
+                div.style.padding = '10px'; div.style.display = 'flex'; div.style.justifyContent = 'space-between'; div.style.alignItems = 'center'; div.style.borderBottom = '1px solid #eee';
+                div.innerHTML = `
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <img src="${u.avatar_url || defaultAvatar}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">
+                        <strong>${u.username}</strong>
+                    </div>
+                    ${isFriend ? '<span style="color:green; font-size:12px;">Arkadaş</span>' : `<button onclick="addFriend('${u.username}')" style="padding:4px 8px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">Ekle</button>`}
+                `;
+                searchResults.appendChild(div);
+            });
+        });
+
+        window.addFriend = async function(fName) {
+            // Karşılıklı arkadaşlık ekleme satırları
+            await _supabase.from('friends').insert([
+                { user_id: currentUser, friend_id: fName },
+                { user_id: fName, friend_id: currentUser }
+            ]);
+            searchInput.value = ''; searchResults.classList.add('hidden');
+            loadSidebarData();
+        };
+
+        // --- GRUP OLUŞTURMA SİSTEMİ ---
+        createGroupBtn.addEventListener('click', async () => {
             const gName = groupNameInput.value.trim();
             if(!gName) return alert('Lütfen bir grup adı yazın!');
 
@@ -299,70 +276,78 @@
 
             const gId = 'group_' + Date.now();
             
-            // Veritabanına grubu kaydet
-            if(!db.groups) db.groups = {};
-            db.groups[gId] = {
-                id: gId,
-                name: gName,
-                avatar: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23007bff'><path d='M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z'/></svg>",
-                members: members
-            };
+            // Supabase üzerinde grup odası açmak için mesajlar tablosuna ilk sinyali gönderiyoruz
+            await _supabase.from('messages').insert([{
+                room_id: gId,
+                sender: 'Sistem',
+                text: `"${gName}" grubu kuruldu. Üyeler: ${members.join(', ')}`
+            }]);
 
-            // Gruba katılan tüm üyelerin listesine grubu ekle
-            members.forEach(m => {
-                if(!db.users[m].groups) db.users[m].groups = [];
-                if(!db.users[m].groups.includes(gId)) db.users[m].groups.push(gId);
-            });
-
-            saveDB();
             groupNameInput.value = '';
-            renderSidebarLists();
-            alert(`"${gName}" grubu başarıyla kuruldu!`);
+            alert(`"${gName}" grubu kuruldu!`);
+            loadSidebarData();
         });
 
-        // --- 4. SOHBETLERİ LİSTELEME VE SEÇME ---
-        function renderSidebarLists() {
+        // --- YAN PANELİ VE LİSTELERİ SUPABASE'DEN YÜKLEME ---
+        async function loadSidebarData() {
             itemsList.innerHTML = '';
-            
-            // Önce Grupları Listele
-            if(db.groups) {
-                Object.keys(db.groups).forEach(gId => {
-                    const group = db.groups[gId];
-                    if(group.members.includes(currentUser)) {
+            groupFriendCheckboxes.innerHTML = '';
+
+            // Arkadaşları Al
+            const { data: friends } = await _supabase.from('friends').select('friend_id').eq('user_id', currentUser);
+            const friendNames = friends ? friends.map(f => f.friend_id) : [];
+
+            // Arkadaşların Profil Detaylarını Çek
+            if(friendNames.length > 0) {
+                const { data: friendProfiles } = await _supabase.from('profiles').select('*').in('username', friendNames);
+                
+                if(friendProfiles) {
+                    friendProfiles.forEach(f => {
+                        // Yan Listeye Ekle
                         const div = document.createElement('div');
-                        div.className = `list-item ${activeTarget === gId ? 'active' : ''}`;
+                        div.className = `list-item ${activeTarget === f.username ? 'active' : ''}`;
                         div.innerHTML = `
                             <div class="item-details">
-                                <img src="${group.avatar}" class="user-avatar">
-                                <div><strong>👥 ${group.name}</strong><br><span style="font-size:11px;color:#888;">Grup Sohbeti</span></div>
+                                <img src="${f.avatar_url || defaultAvatar}" class="user-avatar">
+                                <div><strong>${f.username}</strong></div>
                             </div>
                         `;
-                        div.addEventListener('click', () => openChatTarget(gId, true));
+                        div.addEventListener('click', () => openChatTarget(f.username, false, f.avatar_url));
                         itemsList.appendChild(div);
-                    }
-                });
+
+                        // Grup Seçim Listesine Ekle
+                        const label = document.createElement('label');
+                        label.style.display = 'flex'; label.style.alignItems = 'center'; label.style.gap = '5px'; label.style.marginBottom = '3px';
+                        label.innerHTML = `<input type="checkbox" value="${f.username}" class="group-member-check"> ${f.username}`;
+                        groupFriendCheckboxes.appendChild(label);
+                    });
+                }
             }
 
-            // Sonra Bireysel Arkadaşları Listele
-            const friends = db.users[currentUser].friends || [];
-            friends.forEach(fName => {
-                const friendData = db.users[fName];
-                if(friendData) {
-                    const div = document.createElement('div');
-                    div.className = `list-item ${activeTarget === fName ? 'active' : ''}`;
-                    div.innerHTML = `
-                        <div class="item-details">
-                            <img src="${friendData.avatar}" class="user-avatar">
-                            <div><strong>${friendData.username}</strong></div>
-                        </div>
-                    `;
-                    div.addEventListener('click', () => openChatTarget(fName, false));
-                    itemsList.appendChild(div);
-                }
+            // Katıldığımız Grupları Çek (room_id'si 'group_' ile başlayan mesaj geçmişimiz olan odalar)
+            const { data: groupRooms } = await _supabase.from('messages').select('room_id, text').like('room_id', 'group_%');
+            
+            const uniqueGroupIds = [...new Set(groupRooms ? groupRooms.map(g => g.room_id) : [])];
+            
+            uniqueGroupIds.forEach(gId => {
+                const div = document.createElement('div');
+                div.className = `list-item ${activeTarget === gId ? 'active' : ''}`;
+                div.innerHTML = `
+                    <div class="item-details">
+                        <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23007bff'><path d='M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z'/></svg>" class="user-avatar">
+                        <div><strong>👥 Grup Sohbeti</strong><br><span style="font-size:10px;color:#777;">ID: ${gId.substring(6,13)}</span></div>
+                    </div>
+                `;
+                div.addEventListener('click', () => openChatTarget(gId, true, ""));
+                itemsList.appendChild(div);
             });
+
+            if(friendNames.length === 0) {
+                groupFriendCheckboxes.innerHTML = '<div style="color:#aaa; text-align:center; padding-top:5px;">Önce arkadaş ekleyin.</div>';
+            }
         }
 
-        function openChatTarget(targetId, isGroup) {
+        function openChatTarget(targetId, isGroup, avatarUrl) {
             activeTarget = targetId;
             isGroupChat = isGroup;
 
@@ -372,28 +357,27 @@
             msgImageInput.disabled = false;
 
             if(isGroupChat) {
-                chatTitle.innerText = db.groups[targetId].name;
-                chatAvatar.src = db.groups[targetId].avatar;
+                chatTitle.innerText = "Grup Sohbeti (" + targetId.substring(6,14) + ")";
+                chatAvatar.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23007bff'><path d='M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z'/></svg>";
             } else {
                 chatTitle.innerText = targetId;
-                chatAvatar.src = db.users[targetId].avatar;
+                chatAvatar.src = avatarUrl || defaultAvatar;
             }
 
-            renderSidebarLists();
             renderMessages();
             messageInput.focus();
         }
 
-        // --- 5. MESAJLARIN VE FOTOĞRAFLARIN GÖNDERİLMESİ ---
-        function renderMessages() {
-            messagesContainer.innerHTML = '';
+        // --- MESAJLARI VE FOTOĞRAFLARI ÇEKME ---
+        async function renderMessages() {
             if(!activeTarget) return;
+            messagesContainer.innerHTML = '';
 
-            // Oda ID'si belirleme (Grup ise direkt grup ID, şahıs ise sıralı isim kombinasyonu)
             const chatRoomId = isGroupChat ? activeTarget : [currentUser, activeTarget].sort().join('_');
-            const history = db.chats[chatRoomId] || [];
+            
+            const { data: history } = await _supabase.from('messages').select('*').eq('room_id', chatRoomId).order('created_at', { ascending: true });
 
-            if(history.length === 0) {
+            if(!history || history.length === 0) {
                 messagesContainer.innerHTML = '<div style="text-align:center; color:#999; margin:auto; font-size:13px;">Sohbet geçmişi boş.</div>';
                 return;
             }
@@ -405,7 +389,7 @@
                 
                 let contentHTML = `<div class="sender-name">${msg.sender}</div>`;
                 if(msg.text) contentHTML += `<div>${msg.text}</div>`;
-                if(msg.image) contentHTML += `<img src="${msg.image}">`;
+                if(msg.image_url) contentHTML += `<img src="${msg.image_url}">`;
                 
                 div.innerHTML = contentHTML;
                 messagesContainer.appendChild(div);
@@ -413,24 +397,21 @@
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
-        function commitMessage(text, base64Img) {
+        // --- VERİTABANINA VERİ YAZMA (GÖNDERME) ---
+        async function commitMessage(text, base64Img) {
             if(!activeTarget) return;
             const chatRoomId = isGroupChat ? activeTarget : [currentUser, activeTarget].sort().join('_');
-            
-            if(!db.chats[chatRoomId]) db.chats[chatRoomId] = [];
-            
-            db.chats[chatRoomId].push({
-                sender: currentUser,
-                text: text,
-                image: base64Img || null,
-                time: Date.now()
-            });
 
-            saveDB();
+            await _supabase.from('messages').insert([{
+                room_id: chatRoomId,
+                sender: currentUser,
+                text: text || null,
+                image_url: base64Img || null
+            }]);
+            
             renderMessages();
         }
 
-        // Yazılı Mesaj Gönderme
         sendBtn.addEventListener('click', () => {
             const text = messageInput.value.trim();
             if(!text) return;
@@ -439,26 +420,29 @@
         });
         messageInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') sendBtn.click(); });
 
-        // MESAJDA GÖRSEL GÖNDERME SİSTEMİ
         msgImageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if(file) {
                 const reader = new FileReader();
                 reader.onloadend = () => {
-                    commitMessage("", reader.result); // Fotoğrafı boş metinle gönder
-                    msgImageInput.value = ""; // Seçiciyi sıfırla
+                    commitMessage("", reader.result);
+                    msgImageInput.value = "";
                 }
                 reader.readAsDataURL(file);
             }
         });
 
-        // --- 6. ANLIK SENKRONİZASYON (FARKLI PENCERELER) ---
-        function listenStorage() {
-            window.addEventListener('storage', () => {
-                db = JSON.parse(localStorage.getItem('mega_chat_db')) || { users: {}, chats: {}, session: null };
-                renderSidebarLists();
-                if(activeTarget) renderMessages();
-            });
+        // --- ⚡ GERÇEK ZAMANLI (REALTIME) MOTORU ⚡ ---
+        function listenRealtimeMessages() {
+            _supabase.channel('custom-all-channel')
+            .on('postgres_changes', { event: 'INSERT', scheme: 'public', table: 'messages' }, (payload) => {
+                const chatRoomId = isGroupChat ? activeTarget : [currentUser, activeTarget].sort().join('_');
+                // Eğer gelen mesaj açık olan odaysa anında ekrana bas
+                if(payload.new.room_id === chatRoomId) {
+                    renderMessages();
+                }
+            })
+            .subscribe();
         }
     </script>
 </body>
