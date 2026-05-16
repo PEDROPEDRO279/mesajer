@@ -124,8 +124,8 @@
 
     <script>
         // --- SUPABASE BAĞLANTI AYARLARI ---
-        const SUPABASE_URL = "https://gkdixlwuqnzmgrnmqaay.supabase.co"; // Burası tam doğru kalsın
-        const SUPABASE_ANON_KEY = "BURAYA_AYARLARDAKI_UPUZUN_ANON_KEYI_YAPIŞTIR"; // Buraya Ayarlar'dan aldığın şifreyi yapıştır
+        const SUPABASE_URL = "https://gkdixlwuqnzmgrnmqaay.supabase.co"; 
+        const SUPABASE_ANON_KEY = "BURAYA_AYARLARDAKI_UPUZUN_ANON_KEYI_YAPIŞTIR"; // Buraya Ayarlar'dan aldığın anon anahtarını yapıştır
 
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -196,7 +196,10 @@
                 const finalAvatar = tempAvatarBase64 || defaultAvatar;
                 const { error: regError } = await _supabase.from('profiles').insert([{ id: username, username: username, avatar_url: finalAvatar }]);
                 
-                if(regError) return alert('Kayıt oluşturulurken bir hata meydana geldi!');
+                if(regError) {
+                    console.error(regError); // Detaylı hatayı tarayıcı konsoluna basar
+                    return alert('Kayıt oluşturulurken bir hata meydana geldi: ' + regError.message);
+                }
                 
                 localStorage.setItem('chat_session_user', username);
                 initUser(username);
@@ -270,7 +273,8 @@
 
             const checkedBoxes = document.querySelectorAll('.group-member-check:checked');
             const members = [currentUser];
-            checkedBoxes.forEach(box => members.push(box.value));
+            const checkedBoxesArray = Array.from(checkedBoxes);
+            checkedBoxesArray.forEach(box => members.push(box.value));
 
             if(members.length < 2) return alert('Grup oluşturmak için en az 1 arkadaş seçmelisiniz!');
 
@@ -435,7 +439,7 @@
         // --- ⚡ GERÇEK ZAMANLI (REALTIME) MOTORU ⚡ ---
         function listenRealtimeMessages() {
             _supabase.channel('custom-all-channel')
-            .on('postgres_changes', { event: 'INSERT', scheme: 'public', table: 'messages' }, (payload) => {
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
                 const chatRoomId = isGroupChat ? activeTarget : [currentUser, activeTarget].sort().join('_');
                 // Eğer gelen mesaj açık olan odaysa anında ekrana bas
                 if(payload.new.room_id === chatRoomId) {
